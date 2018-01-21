@@ -1,25 +1,177 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Reproducible Research - Project 1"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+### 1.Loading and preprocessing the data
+
+```{r, echo=FALSE}
+## Loadi dependencies
+
+library(ggplot2)
+library(knitr)
+library(plyr)
+library(lattice)
+```
 
 
+#### 1.1 Load the data 
 
-## What is mean total number of steps taken per day?
+```{r}
+raw_activity <- read.csv("Course5_Project1/activity.csv")
+```
+
+#### 1.2 Process/transform the data (if necessary) into a format suitable for your analysis
+
+```{r}
+raw_activity$day <- weekdays(as.Date(raw_activity$date))
+raw_activity$DateTime <- as.POSIXct(raw_activity$date, format="%Y-%m-%d")
+
+clean_activity <- raw_activity[!is.na(raw_activity$steps),]
+```
 
 
+### 2. What is mean total number of steps taken per day?
 
-## What is the average daily activity pattern?
+#### 2.1 Calculate the total number of steps taken per day
+```{r}
+DailyTotal <- aggregate(clean_activity$steps ~ clean_activity$date, FUN=sum )
+colnames(DailyTotal) <- c("Date","Steps")
+```
+
+#### 2.2 Make a histogram of the total number of steps taken each day
+```{r, echo=FALSE}
+hist(DailyTotal$Steps, breaks=5, xlab="No of Steps", ylab="Frequency", main= "Mean total number of steps taken per day")
+```
+
+#### 2.3 Calculate and report the mean and median of the total number of steps taken per day
+```{r}
+## The mean of steps
+as.integer(mean(DailyTotal$Steps))
+
+## The median of steps
+as.integer(median(DailyTotal$Steps))
+```
+The mean of total number of steps taken per day is 10766.
+
+The median of total number of steps taken per day is 10765.
+
+### 3. What is the average daily activity pattern?
+
+#### 3.1 Make a time series plot  and the average number of steps taken, averaged across all days
+
+```{r, echo=FALSE}
+Step_interval <- ddply(clean_activity, .(interval), summarize, Avg = mean(steps))
+
+interval_plot <- ggplot(Step_interval, aes(x=interval, y=Avg), xlab = "Interval", ylab="Average Number of Steps per 5min")
+interval_plot + geom_line()+xlab("Time interval")+ylab("Average No of steps per 5min")+ggtitle("Average number of steps taken per interval")
+
+```
+
+#### 3.2 Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r}
+Max_Step_Interval <- max(Step_interval$Avg)
+
+Step_interval[Step_interval$Avg==Max_Step_Interval,1]
+
+```
+
+The interval at 835 had the most steps (206).
 
 
+### 4. Imputing missing values
 
-## Imputing missing values
+#### 4.1 Calculate and report the total number of missing values in the dataset
+
+```{r}
+nrow(raw_activity[is.na(raw_activity$steps),])
+```
+There are 2304 rows with missing values.
+
+#### 4.2 Devise a strategy for filling in all of the missing values in the dataset. 
+
+My strategy will be straightforward. Calculate the average 5-minute interval for a given weekday, and use that imputed value for missing rows.
+
+```{r}
+avg_activity <- ddply(clean_activity, .(interval,day), summarize, Avg = mean(steps))
+
+only_na_activity <- raw_activity[is.na(raw_activity$steps),]
+
+```
+
+#### 4.3 Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
+```{r}
+
+## Create a dataset with the imputed fills. Group by interval and day
+merged_data <- merge(only_na_activity,avg_activity, by=c("interval","day"))
+
+## Reorganise rows and name them appropriately
+merged_data_sorted <- merged_data[,c(6,4,1,2,5)]
+colnames(merged_data_sorted) <- c("steps","date","interval", "day", "DateTime")
+
+## Merge together with parent dataset
+merged_imputed_clean_activity <-rbind(clean_activity,merged_data_sorted)
+
+```
+#### 4.4 Calculate and report the mean and median total number of steps taken per day
+
+```{r}
+
+DailyTotal2 <- aggregate(merged_imputed_clean_activity$steps ~ merged_imputed_clean_activity$date, FUN=sum)
+colnames(DailyTotal2) <- c("Date","Steps")
 
 
+## The mean of steps
+as.integer(mean(DailyTotal2$Steps))
 
-## Are there differences in activity patterns between weekdays and weekends?
+## The median of steps
+as.integer(median(DailyTotal2$Steps))
+```
+
+The new mean of total number of steps taken per day is 10821.
+
+The new median of total number of steps taken per day is 11015.
+
+
+#### 4.5 Make a histogram of the total number of steps taken each
+```{r, echo=FALSE}
+hist(DailyTotal2$Steps, breaks=5, xlab="No of Steps", ylab="Frequency", main= "Mean total number of steps taken per day")
+```
+
+#### 4.6 Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+The values do differ slightly from the first part of the assignment. The new mean is 10821, 55 steps more than the old mean. The new median is 11015, 250 steps more than the previous.
+
+However, the distribution stays very similar, as is apparent from the two histograms.
+
+
+### 5. Are there differences in activity patterns between weekdays and weekends?
+
+
+#### 5.1 Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+```{r}
+merged_imputed_clean_activity$DayType <- ifelse(merged_imputed_clean_activity$day %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+```
+
+#### 5.2. Make a panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).
+
+```{r}
+## Echoing this production as it's a bit more complicated
+
+Step_interval2 <- ddply(merged_imputed_clean_activity, .(interval, DayType), summarize, Avg = mean(steps))
+
+xyplot(Avg~interval|DayType, data=Step_interval2, type="l", layout = c(1,2),
+       ylab="Average No of Steps per 5min interval",
+       xlab="Interval",
+       main="Average steps per interval, grouped by day type")
+```
+
+There are clear differences between the weekends and weekdays.
+
